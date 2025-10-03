@@ -30,8 +30,8 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeySaved }) => {
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-      <h2 className="text-2xl font-bold mb-4 text-slate-800">Enter Your Gemini API Key</h2>
-      <p className="mb-6 text-slate-600 max-w-md">
+      <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-200">Enter Your Gemini API Key</h2>
+      <p className="mb-6 text-slate-600 dark:text-slate-400 max-w-md">
         To use this application, you need to provide your own Gemini API key.
         Your key will be saved securely in your browser's local storage and will not be shared.
       </p>
@@ -41,21 +41,21 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ onKeySaved }) => {
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="Enter your Gemini API key here"
-          className="w-full px-4 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
         />
         <button
           onClick={handleSaveKey}
-          className="w-full mt-4 bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="w-full mt-4 bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-700 dark:hover:bg-blue-600"
         >
           Save and Continue
         </button>
-        <p className="mt-4 text-xs text-slate-500">
+        <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
           You can get your API key from the{' '}
           <a
             href="https://aistudio.google.com/app/apikey"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:underline"
+            className="text-blue-600 dark:text-blue-400 hover:underline"
           >
             Google AI Studio
           </a>
