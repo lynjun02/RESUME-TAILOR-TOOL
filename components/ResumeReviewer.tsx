@@ -10,6 +10,18 @@ const UndoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
+import React, { useState, useEffect } from 'react';
+import Spinner from './Spinner';
+import { Draft, GroundingSource } from '../types';
+import { LinkIcon } from './icons/LinkIcon';
+import RefinementLoader from './RefinementLoader';
+
+const UndoIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+  </svg>
+);
+
 export type ConfidenceLevel = 'eager' | 'confident' | 'expert';
 
 interface ResumeReviewerProps {
@@ -19,6 +31,7 @@ interface ResumeReviewerProps {
   onGenerateTone: (tone: ConfidenceLevel) => void;
   isLoading: boolean;
   isRefining: boolean;
+  lastFeedback?: string;
 }
 
 const TONE_MAP: Record<ConfidenceLevel, string> = {
@@ -27,7 +40,7 @@ const TONE_MAP: Record<ConfidenceLevel, string> = {
     expert: 'Seasoned Expert',
 };
 
-const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept, onRefine, onGenerateTone, isLoading, isRefining }) => {
+const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept, onRefine, onGenerateTone, isLoading, isRefining, lastFeedback }) => {
   const [selectedTone, setSelectedTone] = useState<ConfidenceLevel>('eager');
   const [editableText, setEditableText] = useState<string>('');
   const [feedback, setFeedback] = useState('');
@@ -87,13 +100,13 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">Step 3: Review &amp; Refine</h2>
-        <p className="mt-1 text-slate-600">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Step 3: Review &amp; Refine</h2>
+        <p className="mt-1 text-slate-600 dark:text-slate-400">
           The AI has generated a draft. Select a tone, provide feedback, and refine until it's perfect.
         </p>
       </div>
 
-      <div className="flex space-x-2 border-b border-slate-200">
+      <div className="flex space-x-2 border-b border-slate-200 dark:border-slate-700">
         {(Object.keys(TONE_MAP) as ConfidenceLevel[]).map((tone) => (
           <button
             key={tone}
@@ -101,8 +114,8 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
             disabled={isLoading}
             className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
               selectedTone === tone
-                ? 'border-b-2 border-indigo-600 text-indigo-600 bg-indigo-50'
-                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                ? 'border-b-2 border-indigo-600 text-indigo-600 bg-indigo-50 dark:bg-slate-800'
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'
             }`}
           >
             {TONE_MAP[tone]}
@@ -114,7 +127,7 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
         <textarea
             value={editableText}
             onChange={(e) => setEditableText(e.target.value)}
-            className="w-full h-[50vh] p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200 font-mono text-sm"
+            className="w-full h-[50vh] p-4 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200 font-mono text-sm bg-white dark:bg-slate-800"
             disabled={isLoading}
             aria-label="Editable tailored resume in plain text format"
         />
@@ -137,24 +150,24 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
                 />
             </div>
             <div className="ml-3 text-sm leading-6">
-                <label htmlFor="best-practices" className="font-medium text-slate-900">
+                <label htmlFor="best-practices" className="font-medium text-slate-900 dark:text-slate-200">
                     Incorporate best resume practices
                 </label>
-                <p id="best-practices-description" className="text-slate-500">
+                <p id="best-practices-description" className="text-slate-500 dark:text-slate-400">
                     Uses Google Search to find and apply the latest resume writing advice.
                 </p>
             </div>
         </div>
 
         {currentDraft?.sources && currentDraft.sources.length > 0 && (
-          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-2 animate-fade-in">
-              <h3 className="text-sm font-semibold text-indigo-800">Best Practices Applied</h3>
-              <p className="text-xs text-indigo-700">The resume was refined using insights from the following articles found on Google Search:</p>
+          <div className="p-4 bg-indigo-50 dark:bg-slate-800 border border-indigo-200 dark:border-indigo-900 rounded-lg space-y-2 animate-fade-in">
+              <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">Best Practices Applied</h3>
+              <p className="text-xs text-indigo-700 dark:text-indigo-400">The resume was refined using insights from the following articles found on Google Search:</p>
               <ul className="space-y-1 pt-1">
                   {currentDraft.sources.map((source, index) => (
-                      <li key={index} className="flex items-start space-x-2 text-xs text-slate-600">
+                      <li key={index} className="flex items-start space-x-2 text-xs text-slate-600 dark:text-slate-400">
                           <LinkIcon className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
-                          <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="truncate hover:text-indigo-600 hover:underline" title={source.web.title}>
+                          <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="truncate hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline" title={source.web.title}>
                               {source.web.title || source.web.uri}
                           </a>
                       </li>
@@ -164,9 +177,9 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
         )}
 
         {currentDraft?.changelog && (
-            <div className="p-4 bg-slate-100 border border-slate-200 rounded-lg space-y-2 animate-fade-in">
-                <h3 className="text-sm font-semibold text-slate-700">AI Refinement Log:</h3>
-                <ul className="list-disc list-inside space-y-1 text-xs text-slate-600 font-sans">
+            <div className="p-4 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg space-y-2 animate-fade-in">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">AI Refinement Log:</h3>
+                <ul className="list-disc list-inside space-y-1 text-xs text-slate-600 dark:text-slate-300 font-sans">
                   {currentDraft.changelog
                     .split('\n')
                     .map(line => line.trim().replace(/^-/, '').trim())
@@ -179,8 +192,15 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
             </div>
         )}
 
+        {lastFeedback && (
+            <div className="p-3 my-4 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg animate-fade-in">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Last feedback provided:</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 italic">"{lastFeedback}"</p>
+            </div>
+        )}
+
         <div>
-            <label htmlFor="feedback" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="feedback" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Provide Feedback (Optional)
             </label>
             <textarea
@@ -188,7 +208,7 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder="e.g., 'Emphasize my experience with Notion more,' or 'Make the summary more concise.'"
-                className="mt-1 w-full h-24 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200"
+                className="mt-1 w-full h-24 p-4 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200 bg-white dark:bg-slate-800"
                 disabled={isLoading}
             />
         </div>
@@ -199,7 +219,7 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
             <button
               onClick={handleRefine}
               disabled={isRefineDisabled}
-              className="w-full flex justify-center items-center bg-slate-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-slate-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex justify-center items-center bg-slate-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-slate-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors dark:bg-slate-700 dark:hover:bg-slate-600 dark:disabled:bg-slate-500"
             >
               {isLoading && !isActivelyLoadingNewTone ? <Spinner /> : 'Refine Resume'}
             </button>
@@ -207,7 +227,7 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
                 <button
                     onClick={handleUndo}
                     disabled={isLoading}
-                    className="p-3 bg-slate-200 text-slate-700 rounded-lg shadow-sm hover:bg-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed transition-colors animate-fade-in"
+                    className="p-3 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm hover:bg-slate-300 dark:hover:bg-slate-500 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed transition-colors animate-fade-in"
                     aria-label="Undo last refinement"
                     title="Undo last refinement"
                 >
@@ -218,7 +238,7 @@ const ResumeReviewer: React.FC<ResumeReviewerProps> = ({ draftResumes, onAccept,
         <button
           onClick={handleAccept}
           disabled={isLoading || !currentDraft}
-          className="w-full flex justify-center items-center bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors"
+          className="w-full flex justify-center items-center bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed transition-colors dark:disabled:bg-indigo-800"
         >
           Accept and Finalize
         </button>

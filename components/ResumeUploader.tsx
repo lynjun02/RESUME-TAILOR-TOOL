@@ -115,15 +115,17 @@ const ResumeUploader: React.FC<ResumeUploaderProps> = ({ onResumesUpload, isLoad
   };
   
   const dropzoneBaseClasses = 'relative border-2 border-dashed rounded-lg p-8 text-center transition-colors';
-  const dropzoneActiveClasses = isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-white';
-  const dropzoneDisabledClasses = 'cursor-not-allowed bg-slate-100 border-slate-200 text-slate-400';
-  const dropzoneEnabledClasses = 'cursor-pointer hover:border-slate-400';
+  const dropzoneActiveClasses = isDragging
+    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/50'
+    : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800/50';
+  const dropzoneDisabledClasses = 'cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500';
+  const dropzoneEnabledClasses = 'cursor-pointer hover:border-slate-400 dark:hover:border-slate-500';
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="mb-8 p-6 bg-slate-100 rounded-lg border border-slate-200">
-        <h2 className="text-xl font-bold text-slate-800 text-center mb-4">How It Works</h2>
-        <ol className="list-decimal list-inside space-y-2 text-slate-600">
+      <div className="mb-8 p-6 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 text-center mb-4">How It Works</h2>
+        <ol className="list-decimal list-inside space-y-2 text-slate-600 dark:text-slate-400">
           <li>
             <span className="font-semibold">Upload Your Resumes:</span> Provide up to 10 of your past resumes to give the AI context about your experience.
           </li>
@@ -137,8 +139,8 @@ const ResumeUploader: React.FC<ResumeUploaderProps> = ({ onResumesUpload, isLoad
       </div>
 
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">Step 1: Upload Your Resumes</h2>
-        <p className="mt-1 text-slate-600">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-200">Step 1: Upload Your Resumes</h2>
+        <p className="mt-1 text-slate-600 dark:text-slate-400">
           Upload up to {MAX_FILES} of your existing resumes. The AI will use them as a reference.
           Supported formats: {FILE_EXTENSIONS_STRING}.
         </p>
@@ -166,42 +168,51 @@ const ResumeUploader: React.FC<ResumeUploaderProps> = ({ onResumesUpload, isLoad
           disabled={isLoading || !canUploadMore}
         />
         <div className="flex flex-col items-center">
-          <UploadIcon className={`w-12 h-12 ${isLoading || !canUploadMore ? 'text-slate-300' : 'text-slate-400'}`} />
+          <UploadIcon className={`w-12 h-12 ${isLoading || !canUploadMore ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400 dark:text-slate-500'}`} />
           <p className="mt-2 text-sm">
             {canUploadMore ? (
               <>
-                <span className="font-semibold text-indigo-600">Click to upload</span> or drag and drop
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop
               </>
             ) : (
                 'Maximum number of files reached'
             )}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             {canUploadMore ? 'PDF, DOCX, TXT, or MD' : `${MAX_FILES} files selected`}
           </p>
         </div>
       </div>
       
       {uploadWarning && (
-        <div className="text-sm text-amber-800 bg-amber-50 p-3 rounded-lg border border-amber-200 animate-fade-in">
+        <div className="text-sm text-amber-800 bg-amber-50 dark:text-amber-200 dark:bg-amber-900/50 p-3 rounded-lg border border-amber-200 dark:border-amber-800 animate-fade-in">
             {uploadWarning}
         </div>
       )}
 
       {files.length > 0 && (
         <div className="space-y-3">
-          <h3 className="font-semibold text-slate-700">Selected Files ({files.length}/{MAX_FILES}):</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300">Selected Files ({files.length}/{MAX_FILES}):</h3>
+            <button
+              onClick={() => setFiles([])}
+              disabled={isLoading}
+              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200 disabled:opacity-50"
+            >
+              Clear All
+            </button>
+          </div>
           <ul className="space-y-2">
             {files.map(file => (
-              <li key={file.name} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
+              <li key={file.name} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center space-x-3 truncate">
-                  <DocumentIcon className="w-6 h-6 text-slate-500 flex-shrink-0" />
-                  <span className="text-sm text-slate-800 font-medium truncate" title={file.name}>{file.name}</span>
+                  <DocumentIcon className="w-6 h-6 text-slate-500 dark:text-slate-400 flex-shrink-0" />
+                  <span className="text-sm text-slate-800 dark:text-slate-200 font-medium truncate" title={file.name}>{file.name}</span>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.name); }}
                   disabled={isLoading}
-                  className="p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-600 disabled:opacity-50"
+                  className="p-1 rounded-full text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50"
                   aria-label={`Remove ${file.name}`}
                 >
                   <XCircleIcon className="w-5 h-5" />

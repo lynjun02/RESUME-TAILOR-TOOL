@@ -330,8 +330,18 @@ export const changeResumeTone = async (
 /**
  * A dedicated function to fetch best practices using Google Search.
  * This decouples source fetching from the main text generation, making it more reliable.
+ * It now caches the result in sessionStorage to avoid redundant API calls.
  */
 const fetchBestPractices = async (apiKey: string): Promise<{ sources: GroundingSource[], practicesText: string }> => {
+    const cacheKey = 'bestPracticesCache';
+    const cachedData = sessionStorage.getItem(cacheKey);
+
+    if (cachedData) {
+        console.log("Returning cached best practices.");
+        return JSON.parse(cachedData);
+    }
+
+    console.log("Fetching new best practices from API.");
     const prompt = "Summarize the top 5-7 modern resume best practices for clarity, impact, and ATS optimization.";
     
     const client = getGenAIClient(apiKey);
@@ -356,7 +366,15 @@ const fetchBestPractices = async (apiKey: string): Promise<{ sources: GroundingS
     }
     const uniqueSources = Array.from(new Map(allSources.map(s => [s.web.uri, s])).values());
     
-    return { sources: uniqueSources.filter(s => s.web?.uri), practicesText };
+    const result = { sources: uniqueSources.filter(s => s.web?.uri), practicesText };
+
+    try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(result));
+    } catch (e) {
+        console.warn("Failed to cache best practices:", e);
+    }
+
+    return result;
 };
 
 
@@ -374,7 +392,7 @@ ${bestPracticesText}
 
     return `
 ROLE: Surgical Resume Editor.
-TASK: Make precise, targeted edits to the "Current Resume Draft" based *only* on the user's feedback. Do not rewrite, rephrase, or restructure the entire document.
+TASK: Make precise, targeted edits to the "Current Resume Draft" based *only* on the user's feedback. Do not rewrite, rephrase, or restructure the entire document. For example, if the user says "make my project descriptions stronger," you will ONLY rewrite the project descriptions and leave the rest of the resume (summary, skills, work experience) completely untouched.
 
 **CORE DIRECTIVE: MINIMAL CHANGE**
 Your primary goal is to apply the user's requested changes with as few modifications to the original text as possible. Preserve the original wording, formatting, and structure in all other areas.
@@ -408,7 +426,7 @@ Start your response with the first word of the refined resume. End this part wit
 **Part 2: The Delimiter and Changelog**
 Immediately after the resume text, on a new line, you MUST include the exact delimiter:
 ${changelogDelimiter}
-Immediately after the delimiter, provide a brief, high-level summary of the 3-5 most important changes made. Each point should be on its own line without any bullet characters.
+Immediately after the delimiter, provide a brief, high-level summary of the 3-5 most important edits you actually performed on the resume text. This log must only contain actions you have taken, not instructions you were given. For example, if you changed the summary, a valid entry would be "Rewrote the summary for conciseness." Each point should be on its own line without any bullet characters.
 ---
 
 Refine the resume now. Adhere strictly to all instructions, especially the MINIMAL CHANGE directive and the two-part output format.

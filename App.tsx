@@ -11,18 +11,60 @@ import ErrorDisplay from './components/ErrorDisplay';
 import GenerationLoader from './components/GenerationLoader';
 import ApiKeyManager from './components/ApiKeyManager';
 
+/**
+ * The main application component.
+ * Manages the overall state and flow of the resume tailoring process.
+ */
 const App: React.FC = () => {
-  // Add state for the API key. It's null until loaded from localStorage or set by the user.
+  /** The user's Gemini API key. Null until loaded from localStorage or set by the user. */
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [appState, setAppState] = useState<AppState>(AppState.UPLOAD);
+  /** A history of the user's navigation steps (app states). */
+  const [history, setHistory] = useState<AppState[]>([AppState.UPLOAD]);
+  /** The user's current position in the navigation history. */
+  const [currentStep, setCurrentStep] = useState(0);
+  /** The current state of the application, derived from history. */
+  const appState = history[currentStep];
+  /** An array of the raw text content from the user's uploaded resume files. */
   const [resumeTexts, setResumeTexts] = useState<string[]>([]);
+  /** An object holding the generated resume drafts, keyed by confidence level. */
   const [draftResumes, setDraftResumes] = useState<Partial<Record<ConfidenceLevel, Draft>> | null>(null);
+  /** The final, accepted resume text. */
   const [finalResume, setFinalResume] = useState<string>('');
+  /** A boolean indicating if a primary generation or tone-change process is running. */
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  /** A boolean indicating if a refinement process is running. */
   const [isRefining, setIsRefining] = useState<boolean>(false);
+  /** A string holding any error message to be displayed to the user. */
   const [error, setError] = useState<string | null>(null);
+  /** The last feedback string submitted by the user for refinement. */
+  const [lastFeedback, setLastFeedback] = useState('');
 
-  // useEffect to load the API key from local storage when the app starts.
+  /**
+   * Advances the application to a new state and updates the history.
+   * @param newState The new AppState to transition to.
+   */
+  const setStep = (newState: AppState) => {
+    const newHistory = history.slice(0, currentStep + 1);
+    newHistory.push(newState);
+    setHistory(newHistory);
+    setCurrentStep(newHistory.length - 1);
+  };
+
+  /** Navigates to the previous step in the history, if available. */
+  const goBack = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  /** Navigates to the next step in the history, if available. */
+  const goForward = () => {
+    if (currentStep < history.length - 1) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  // Effect to load the API key from local storage when the app initializes.
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
     if (savedKey) {
@@ -30,19 +72,27 @@ const App: React.FC = () => {
     }
   }, []); // The empty dependency array ensures this runs only once on mount.
 
+  /**
+   * Sets the error state and stops any loading indicators.
+   * @param errorMessage The error message to display.
+   */
   const handleError = (errorMessage: string) => {
     setError(errorMessage);
     setIsLoading(false);
     setIsRefining(false);
   };
 
+  /**
+   * Handles the processing of uploaded resume files.
+   * @param files An array of File objects from the uploader.
+   */
   const handleResumesUpload = async (files: File[]) => {
     setIsLoading(true);
     setError(null);
     try {
       const texts = await readFilesAsText(files);
       setResumeTexts(texts);
-      setAppState(AppState.JOB_DESCRIPTION);
+      setStep(AppState.JOB_DESCRIPTION);
     } catch (err) {
       handleError(err instanceof Error ? err.message : 'An unknown error occurred while reading files.');
     } finally {
@@ -50,6 +100,12 @@ const App: React.FC = () => {
     }
   };
 
+  /**
+   * Creates a callback function for handling streaming AI responses.
+   * This updates the draft resume text chunk by chunk.
+   * @param tone The confidence level of the draft being generated.
+   * @returns A function that takes a string chunk and updates the state.
+   */
   const createStreamingCallback = (tone: ConfidenceLevel) => (chunk: string) => {
       setDraftResumes(prev => {
           const currentDraft = prev?.[tone] ?? { text: '' };
@@ -63,8 +119,11 @@ const App: React.FC = () => {
       });
   };
 
+  /**
+   * Initiates the initial resume draft generation.
+   * @param jd The job description string.
+   */
   const handleGenerate = async (jd: string) => {
-    // Ensure API key exists before making a call.
     if (!apiKey) {
       handleError("API Key is not set. Please set it in the settings.");
       return;
@@ -72,27 +131,30 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setDraftResumes({ eager: { text: '' } });
-    setAppState(AppState.GENERATING);
+    setStep(AppState.GENERATING);
     try {
-      // Pass the API key to the service function.
       const processedJd = await preprocessText(apiKey, jd, 'job-description');
       
       const result = await generateInitialResumeDraft(
-        apiKey, // Pass the key
+        apiKey,
         resumeTexts,
         processedJd,
         createStreamingCallback('eager')
       );
       setDraftResumes({ eager: result });
-      setAppState(AppState.REVIEW);
+      setStep(AppState.REVIEW);
     } catch (err) {
       handleError(err instanceof Error ? err.message : 'An unknown error occurred during generation.');
-      setAppState(AppState.JOB_DESCRIPTION);
+      goBack();
     } finally {
       setIsLoading(false);
     }
   };
 
+  /**
+   * Generates a new version of the resume with a different tone.
+   * @param tone The new confidence level to apply.
+   */
   const handleGenerateTone = async (tone: ConfidenceLevel) => {
     if (!apiKey) {
       handleError("API Key is not set.");
@@ -118,7 +180,6 @@ const App: React.FC = () => {
     setDraftResumes(prev => ({ ...prev, [tone]: { text: '' } }));
     
     try {
-      // Pass the API key
       const result = await changeResumeTone(
         apiKey,
         baseDraftText,
@@ -133,6 +194,13 @@ const App: React.FC = () => {
     }
   };
 
+  /**
+   * Initiates the refinement of a resume draft based on user feedback.
+   * @param draftToRefine The current text of the draft to be refined.
+   * @param feedback The user's feedback text.
+   * @param confidence The confidence level of the draft being refined.
+   * @param useBestPractices A boolean indicating whether to incorporate best practices.
+   */
   const handleRefineResume = async (draftToRefine: string, feedback: string, confidence: ConfidenceLevel, useBestPractices: boolean) => {
     if (!apiKey) {
       handleError("API Key is not set.");
@@ -141,6 +209,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setIsRefining(true);
     setError(null);
+    setLastFeedback(feedback);
 
     const initialDraftState = draftResumes?.[confidence];
     setDraftResumes(prev => ({
@@ -178,11 +247,9 @@ const App: React.FC = () => {
     try {
       let processedFeedback = feedback;
       if (feedback.trim()) {
-        // Pass the API key
         processedFeedback = await preprocessText(apiKey, feedback, 'feedback');
       }
 
-      // Pass the API key
       await refineResume(
         apiKey,
         draftToRefine,
@@ -201,14 +268,19 @@ const App: React.FC = () => {
     }
   };
 
-
+  /**
+   * Finalizes the resume and moves to the last step.
+   * @param acceptedDraft The final draft object.
+   */
   const handleAccept = (acceptedDraft: Draft) => {
     setFinalResume(acceptedDraft.text);
-    setAppState(AppState.FINAL);
+    setStep(AppState.FINAL);
   };
 
+  /** Resets the entire application state to the beginning. */
   const handleStartOver = () => {
-    setAppState(AppState.UPLOAD);
+    setHistory([AppState.UPLOAD]);
+    setCurrentStep(0);
     setResumeTexts([]);
     setDraftResumes(null);
     setFinalResume('');
@@ -216,6 +288,11 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
 
+  /**
+   * Renders the main content of the application based on the current app state.
+   * This acts as a router for the different steps of the process.
+   * @returns The React component for the current step.
+   */
   const renderContent = () => {
     // If there's no API key, render the ApiKeyManager component first.
     if (!apiKey) {
@@ -228,7 +305,7 @@ const App: React.FC = () => {
       case AppState.JOB_DESCRIPTION:
         return <JobDescriptionInput onGenerate={handleGenerate} isLoading={isLoading} />;
       case AppState.GENERATING:
-        return <GenerationLoader />;
+        return <GenerationLoader onCancel={goBack} />;
       case AppState.REVIEW:
         if (!draftResumes) {
             handleStartOver();
@@ -242,6 +319,7 @@ const App: React.FC = () => {
             onGenerateTone={handleGenerateTone}
             isLoading={isLoading}
             isRefining={isRefining}
+            lastFeedback={lastFeedback}
           />
         );
       case AppState.FINAL:
@@ -253,11 +331,27 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-50 min-h-screen font-sans flex flex-col">
+    <div className="bg-slate-50 dark:bg-slate-900 min-h-screen font-sans flex flex-col">
       <Header />
       <main className="max-w-4xl mx-auto p-4 md:p-8 w-full flex-grow">
-        <div className="bg-white p-6 md:p-8 rounded-xl shadow-lg h-full">
+        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-xl shadow-lg h-full">
           {error && <ErrorDisplay message={error} onClose={() => setError(null)} />}
+          <div className="flex justify-between items-center mb-4">
+            <button
+              onClick={goBack}
+              disabled={currentStep === 0}
+              className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded-md hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Back
+            </button>
+            <button
+              onClick={goForward}
+              disabled={currentStep >= history.length - 1}
+              className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded-md hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Forward
+            </button>
+          </div>
           {renderContent()}
         </div>
       </main>
