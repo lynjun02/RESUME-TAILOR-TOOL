@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppState, Draft, GroundingSource } from './types';
 import { readFilesAsText } from './utils/fileReader';
 import { generateInitialResumeDraft, refineResume, changeResumeTone, preprocessText } from './services/geminiService';
@@ -9,8 +9,11 @@ import ResumeReviewer, { ConfidenceLevel } from './components/ResumeReviewer';
 import FinalResumeDisplay from './components/FinalResumeDisplay';
 import ErrorDisplay from './components/ErrorDisplay';
 import GenerationLoader from './components/GenerationLoader';
+import ApiKeyManager from './components/ApiKeyManager';
 
 const App: React.FC = () => {
+  // Add state for the API key. It's null until loaded from localStorage or set by the user.
+  const [apiKey, setApiKey] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>(AppState.UPLOAD);
   const [resumeTexts, setResumeTexts] = useState<string[]>([]);
   const [draftResumes, setDraftResumes] = useState<Partial<Record<ConfidenceLevel, Draft>> | null>(null);
@@ -18,6 +21,14 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefining, setIsRefining] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // useEffect to load the API key from local storage when the app starts.
+  useEffect(() => {
+    const savedKey = localStorage.getItem('gemini_api_key');
+    if (savedKey) {
+      setApiKey(savedKey);
+    }
+  }, []); // The empty dependency array ensures this runs only once on mount.
 
   const handleError = (errorMessage: string) => {
     setError(errorMessage);
@@ -53,30 +64,40 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async (jd: string) => {
+    // Ensure API key exists before making a call.
+    if (!apiKey) {
+      handleError("API Key is not set. Please set it in the settings.");
+      return;
+    }
     setIsLoading(true);
     setError(null);
-    setDraftResumes({ eager: { text: '' } }); // Initialize for EAGER tone
+    setDraftResumes({ eager: { text: '' } });
     setAppState(AppState.GENERATING);
     try {
-      // Pre-process the job description for conciseness and cost-saving.
-      const processedJd = await preprocessText(jd, 'job-description');
+      // Pass the API key to the service function.
+      const processedJd = await preprocessText(apiKey, jd, 'job-description');
       
       const result = await generateInitialResumeDraft(
-        resumeTexts, // Use the raw array of resume texts directly.
-        processedJd, // Use the processed, cleaner job description.
+        apiKey, // Pass the key
+        resumeTexts,
+        processedJd,
         createStreamingCallback('eager')
       );
       setDraftResumes({ eager: result });
-      setAppState(AppState.REVIEW); // Transition on success
+      setAppState(AppState.REVIEW);
     } catch (err) {
       handleError(err instanceof Error ? err.message : 'An unknown error occurred during generation.');
-      setAppState(AppState.JOB_DESCRIPTION); // Go back on error
+      setAppState(AppState.JOB_DESCRIPTION);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGenerateTone = async (tone: ConfidenceLevel) => {
+    if (!apiKey) {
+      handleError("API Key is not set.");
+      return;
+    }
     if (draftResumes?.[tone] || isLoading) {
       return;
     }
@@ -94,10 +115,12 @@ const App: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
-    setDraftResumes(prev => ({ ...prev, [tone]: { text: '' } })); // Initialize for streaming
+    setDraftResumes(prev => ({ ...prev, [tone]: { text: '' } }));
     
     try {
+      // Pass the API key
       const result = await changeResumeTone(
+        apiKey,
         baseDraftText,
         tone as 'confident' | 'expert',
         createStreamingCallback(tone)
@@ -111,6 +134,10 @@ const App: React.FC = () => {
   };
 
   const handleRefineResume = async (draftToRefine: string, feedback: string, confidence: ConfidenceLevel, useBestPractices: boolean) => {
+    if (!apiKey) {
+      handleError("API Key is not set.");
+      return;
+    }
     setIsLoading(true);
     setIsRefining(true);
     setError(null);
@@ -120,9 +147,9 @@ const App: React.FC = () => {
         ...prev,
         [confidence]: {
             ...initialDraftState,
-            text: '', // Clear text for streaming
-            sources: useBestPractices ? undefined : initialDraftState?.sources, // Clear sources only if we're fetching new ones
-            changelog: undefined, // Clear old changelog
+            text: '',
+            sources: useBestPractices ? undefined : initialDraftState?.sources,
+            changelog: undefined,
         }
     }));
 
@@ -151,10 +178,13 @@ const App: React.FC = () => {
     try {
       let processedFeedback = feedback;
       if (feedback.trim()) {
-        processedFeedback = await preprocessText(feedback, 'feedback');
+        // Pass the API key
+        processedFeedback = await preprocessText(apiKey, feedback, 'feedback');
       }
 
+      // Pass the API key
       await refineResume(
+        apiKey,
         draftToRefine,
         processedFeedback,
         confidence,
@@ -187,6 +217,11 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    // If there's no API key, render the ApiKeyManager component first.
+    if (!apiKey) {
+      return <ApiKeyManager onKeySaved={setApiKey} />;
+    }
+
     switch (appState) {
       case AppState.UPLOAD:
         return <ResumeUploader onResumesUpload={handleResumesUpload} isLoading={isLoading} />;

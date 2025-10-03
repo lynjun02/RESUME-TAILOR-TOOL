@@ -3,8 +3,29 @@ import { ConfidenceLevel } from '../components/ResumeReviewer';
 import { Draft, GroundingSource } from '../types';
 import { formatAIResponse } from '../utils/formatAIResponse';
 
-// Initialize the Gemini client. The instructions state to assume process.env.API_KEY is available.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+// A cache for the GoogleGenAI client to avoid re-creating it for every call.
+let ai: GoogleGenAI | null = null;
+
+/**
+ * Initializes and returns a singleton instance of the GoogleGenAI client.
+ * This is a crucial change to allow the API key to be provided at runtime.
+ * @param apiKey The user-provided Gemini API key.
+ * @returns An initialized GoogleGenAI client.
+ * @throws If the API key is not provided.
+ */
+const getGenAIClient = (apiKey: string): GoogleGenAI => {
+    if (!apiKey) {
+        // This is a critical check to ensure the user has provided a key.
+        throw new Error("Gemini API key not provided. Please enter your API key in the settings.");
+    }
+    // If the client hasn't been created yet, or if a new key is provided, create a new instance.
+    // For this implementation, we assume the key doesn't change mid-session.
+    if (!ai) {
+        ai = new GoogleGenAI({ apiKey });
+    }
+    return ai;
+};
+
 
 // A more robust retry strategy to handle high traffic and transient API errors.
 const MAX_RETRIES = 7;
@@ -111,14 +132,15 @@ Provide the refined feedback now.
 /**
  * Pre-processes text by sending it to the AI for cleaning and summarization to reduce token count.
  */
-export const preprocessText = async (text: string, context: 'job-description' | 'feedback'): Promise<string> => {
+export const preprocessText = async (apiKey: string, text: string, context: 'job-description' | 'feedback'): Promise<string> => {
     // If the text is very short, no need to preprocess.
     if (text.trim().length < 50) {
         return text;
     }
 
     try {
-        const response = await withRetry(() => ai.models.generateContent({
+        const client = getGenAIClient(apiKey);
+        const response = await withRetry(() => client.models.generateContent({
             model: "gemini-2.5-flash",
             contents: preprocessPrompt(text, context),
             config: { temperature: 0.1 }, // Low temperature for deterministic cleaning
@@ -171,6 +193,7 @@ Generate the resume now.
  * Generates one resume draft ('eager') with streaming.
  */
 export const generateInitialResumeDraft = async (
+    apiKey: string,
     resumeTexts: string[],
     jobDescription: string,
     onChunk: (chunk: string) => void
@@ -178,7 +201,8 @@ export const generateInitialResumeDraft = async (
     const prompt = generateInitialDraftPrompt(resumeTexts, jobDescription);
 
     try {
-        const streamResponse = await withRetry(() => ai.models.generateContentStream({
+        const client = getGenAIClient(apiKey);
+        const streamResponse = await withRetry(() => client.models.generateContentStream({
             model: "gemini-2.5-flash",
             contents: prompt,
             config: {
@@ -254,13 +278,15 @@ Rewrite the resume in the "${tone}" tone now.
  * Changes the tone of a given resume draft with streaming.
  */
 export const changeResumeTone = async (
+    apiKey: string,
     baseResumeText: string,
     tone: 'confident' | 'expert',
     onChunk: (chunk: string) => void
 ): Promise<Draft> => {
     const prompt = changeTonePrompt(baseResumeText, tone);
     try {
-        const streamResponse = await withRetry(() => ai.models.generateContentStream({
+        const client = getGenAIClient(apiKey);
+        const streamResponse = await withRetry(() => client.models.generateContentStream({
             model: 'gemini-2.5-flash',
             contents: prompt,
              config: {
@@ -305,10 +331,11 @@ export const changeResumeTone = async (
  * A dedicated function to fetch best practices using Google Search.
  * This decouples source fetching from the main text generation, making it more reliable.
  */
-const fetchBestPractices = async (): Promise<{ sources: GroundingSource[], practicesText: string }> => {
+const fetchBestPractices = async (apiKey: string): Promise<{ sources: GroundingSource[], practicesText: string }> => {
     const prompt = "Summarize the top 5-7 modern resume best practices for clarity, impact, and ATS optimization.";
     
-    const response = await withRetry(() => ai.models.generateContent({
+    const client = getGenAIClient(apiKey);
+    const response = await withRetry(() => client.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
@@ -346,18 +373,22 @@ ${bestPracticesText}
 ---`;
 
     return `
-ROLE: Expert resume editor.
-TASK: Refine the "Current Resume Draft".
+ROLE: Surgical Resume Editor.
+TASK: Make precise, targeted edits to the "Current Resume Draft" based *only* on the user's feedback. Do not rewrite, rephrase, or restructure the entire document.
+
+**CORE DIRECTIVE: MINIMAL CHANGE**
+Your primary goal is to apply the user's requested changes with as few modifications to the original text as possible. Preserve the original wording, formatting, and structure in all other areas.
 
 **HIERARCHY OF INSTRUCTIONS (MOST IMPORTANT FIRST):**
 1.  **USER FEEDBACK (ABSOLUTE PRIORITY):** You MUST precisely follow the user's feedback. This is your primary command.
-2.  **MANDATORY FORMATTING RULES (NON-NEGOTIABLE):**
+2.  **MINIMAL CHANGE (CRITICAL):** Only change the specific parts of the resume mentioned in the feedback. The rest of the resume must remain identical.
+3.  **MANDATORY FORMATTING RULES (NON-NEGOTIABLE):**
     - **Plain Text Only:** The entire output must be plain UTF-8 text.
     - **No Markdown:** You MUST NOT use any markdown formatting. This includes but is not limited to: asterisks for bolding (\`**text**\`), asterisks for lists (\`* item\`), hyphens for lists (\`- item\`), underscores for italics (\`_text_\`), or any other markdown syntax.
     - **Indented Lists:** For any list (like skills or job responsibilities), every item MUST start on a new line and be indented with exactly two spaces. Do not use any bullet characters.
-3.  **BEST PRACTICES:** After applying the user's feedback, if any best practices are provided below, incorporate them.
-4.  **TONE ADHERENCE:** All changes must strictly conform to the specified "${confidence}" tone.
-5.  **NO NEW INFORMATION:** Do not invent facts, skills, or experiences. All content must originate from the "Current Resume Draft".
+4.  **BEST PRACTICES:** After applying the user's feedback, if any best practices are provided below, incorporate them *only if they don't conflict with the MINIMAL CHANGE directive*.
+5.  **TONE ADHERENCE:** All changes must strictly conform to the specified "${confidence}" tone.
+6.  **NO NEW INFORMATION:** Do not invent facts, skills, or experiences. All content must originate from the "Current Resume Draft".
 
 ---
 **User Feedback:**
@@ -380,7 +411,7 @@ ${changelogDelimiter}
 Immediately after the delimiter, provide a brief, high-level summary of the 3-5 most important changes made. Each point should be on its own line without any bullet characters.
 ---
 
-Refine the resume now. Adhere strictly to all instructions and the two-part output format.
+Refine the resume now. Adhere strictly to all instructions, especially the MINIMAL CHANGE directive and the two-part output format.
 `;
 };
 
@@ -389,6 +420,7 @@ Refine the resume now. Adhere strictly to all instructions and the two-part outp
  * Refines a given resume draft based on user feedback with streaming.
  */
 export const refineResume = async (
+    apiKey: string,
     draftToRefine: string,
     feedback: string,
     confidence: ConfidenceLevel,
@@ -402,7 +434,7 @@ export const refineResume = async (
 
     if (useBestPractices) {
         try {
-            const practices = await fetchBestPractices();
+            const practices = await fetchBestPractices(apiKey);
             onSources(practices.sources); // Immediately send sources to the UI! This is the key fix.
             bestPracticesText = practices.practicesText;
         } catch (error) {
@@ -415,7 +447,8 @@ export const refineResume = async (
     const prompt = refineResumePrompt(draftToRefine, feedback, confidence, bestPracticesText, changelogDelimiter);
     
     try {
-        const streamResponse = await withRetry(() => ai.models.generateContentStream({
+        const client = getGenAIClient(apiKey);
+        const streamResponse = await withRetry(() => client.models.generateContentStream({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: { temperature: 0.5 },
